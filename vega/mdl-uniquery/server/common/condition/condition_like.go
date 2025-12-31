@@ -1,0 +1,72 @@
+package condition
+
+import (
+	"context"
+	"fmt"
+
+	vopt "uniquery/common/value_opt"
+	dtype "uniquery/interfaces/data_type"
+)
+
+type LikeCond struct {
+	mCfg             *CondCfg
+	mValue           string
+	mRealValue       string
+	mFilterFieldName string
+}
+
+func NewLikeCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*ViewField) (Condition, error) {
+	if !dtype.DataType_IsString(cfg.NameField.Type) &&
+		dtype.SimpleTypeMapping[cfg.NameField.Type] != dtype.DataType_String {
+		return nil, fmt.Errorf("condition [like] left field is not a string field: %s:%s", cfg.NameField.Name, cfg.NameField.Type)
+	}
+
+	if cfg.ValueOptCfg.ValueFrom != vopt.ValueFrom_Const {
+		return nil, fmt.Errorf("condition [like] does not support value_from type '%s'", cfg.ValueFrom)
+	}
+
+	val, ok := cfg.ValueOptCfg.Value.(string)
+	if !ok {
+		return nil, fmt.Errorf("condition [like] right value is not a string value: %v", cfg.Value)
+	}
+
+	realVal := ""
+	if cfg.ValueOptCfg.RealValue != nil {
+		realVal, ok = cfg.ValueOptCfg.RealValue.(string)
+		if !ok {
+			return nil, fmt.Errorf("condition [like] right real value is not a string value: %v", cfg.Value)
+		}
+	}
+
+	return &LikeCond{
+		mCfg:             cfg,
+		mValue:           val,
+		mRealValue:       realVal,
+		mFilterFieldName: getFilterFieldName(ctx, cfg.Name, fieldsMap, false),
+	}, nil
+}
+
+func (cond *LikeCond) Convert(ctx context.Context) (string, error) {
+	valPattern := fmt.Sprintf(".*%s.*", cond.mValue)
+	v := fmt.Sprintf("%q", valPattern)
+	dslStr := fmt.Sprintf(`
+					{
+						"regexp": {
+							"%s": %v
+						}
+					}`, cond.mFilterFieldName, v)
+
+	return dslStr, nil
+}
+
+func (cond *LikeCond) Convert2SQL(ctx context.Context) (string, error) {
+	v := cond.mRealValue
+	if v == "" {
+		v = cond.mValue
+	}
+
+	vStr := fmt.Sprintf("%v", v)
+	sqlStr := fmt.Sprintf(`"%s" LIKE '%s'`, cond.mFilterFieldName, vStr)
+
+	return sqlStr, nil
+}

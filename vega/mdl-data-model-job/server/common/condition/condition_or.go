@@ -1,0 +1,51 @@
+package condition
+
+import (
+	"context"
+	"fmt"
+)
+
+type OrCond struct {
+	mCfg      *CondCfg
+	mSubConds []Condition
+}
+
+func newOrCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*Field) (Condition, error) {
+	subConds := []Condition{}
+
+	if len(cfg.SubConds) == 0 {
+		return nil, fmt.Errorf("sub condition size is 0")
+	}
+
+	if len(cfg.SubConds) > MaxSubCondition {
+		return nil, fmt.Errorf("sub condition size limit %d but %d", MaxSubCondition, len(cfg.SubConds))
+	}
+
+	for _, subCond := range cfg.SubConds {
+		cond, err := NewCondition(ctx, subCond, fieldsMap)
+		if err != nil {
+			return nil, err
+		}
+
+		subConds = append(subConds, cond)
+	}
+
+	return &OrCond{
+		mCfg:      cfg,
+		mSubConds: subConds,
+	}, nil
+
+}
+
+func (cond *OrCond) Pass(ctx context.Context, data *OriginalData) (bool, error) {
+	for _, subCond := range cond.mSubConds {
+		rslt, err := subCond.Pass(ctx, data)
+		if err != nil {
+			return false, err
+		}
+		if rslt {
+			return true, nil
+		}
+	}
+	return false, nil
+}
